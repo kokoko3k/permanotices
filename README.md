@@ -9,9 +9,10 @@ then it clones them as soon as possible but changes them
 to never expire.
 
 Note that:
-Persistent notifications are left unchanged
-notifications that carries actions are left unchanged
-notifications HINTS are silently discarded
+======
+* Persistent notifications are left unchanged
+* notifications that carries actions are left unchanged
+* notifications HINTS are silently discarded
 
 
 
