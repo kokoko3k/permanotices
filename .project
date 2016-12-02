@@ -3,6 +3,7 @@
 Title=gbPermanotices
 Startup=Main
 Version=0.0.1
+Component=gb.signal
 TabSize=2
 Language=en_US
 Packager=1
