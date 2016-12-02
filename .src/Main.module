@@ -1,0 +1,279 @@
+' Gambas module file
+
+' Gambas class file
+
+Public Struct sMy_Notification
+  app_name As String
+  replaces_id As String
+  cloned_id As String
+  app_icon As String
+  summary As String
+  body As String
+  actions As String[]
+  hints As Collection[]
+  expire_timeout As Long
+  dDate As Date
+  serial As Integer
+End Struct
+
+Public pDbusMonitor As Process 'get notification bodyes
+Public pDbusMonitorReply As Process 'get replies / notification ids
+Public aNotifications As SMy_Notification[]
+
+
+
+Public Sub Which(exe As String) As String
+  Dim out As String
+  Shell "which " & exe To out
+  Return Trim(out)
+End
+
+
+Public TmpDir As String 
+Public notify_send_exe As String
+
+Public Sub Main()
+  Dim dBusMonitorExe As String = ""
+  Dim cmd, cmd_reply As String
+
+  Try dBusMonitorExe = Which("dbus-monitor")
+  If dBusMonitorExe = "" Then 
+    Debug "dbus-monitor cannot be found in $PATH"
+    Quit
+  Endif
+  
+  TmpDir = File.Dir(Temp())
+  notify_send_exe = tmpdir & "/notify-send.sh"
+  Try Copy "notify-send.sh" To notify_send_exe
+  Try Chmod notify_send_exe To "rwxr-x---"
+  If Error Then 
+    Debug "Could not set File permissions"
+    Quit
+  Endif
+  
+  
+  cmd = dBusMonitorExe
+  cmd &= " --monitor"
+  cmd &= " \""
+  cmd &= " type='method_call',"
+  cmd &= " path='/org/freedesktop/Notifications',"
+  cmd &= " interface='org.freedesktop.Notifications',"
+  cmd &= " member='Notify'"
+  cmd &= "\""
+  Debug cmd
+  pDbusMonitor = Shell cmd For Read As "pDbusMonitor"
+  
+  cmd_reply = dBusMonitorExe
+  cmd_reply &= " --monitor"
+  cmd_reply &= " \""
+  cmd_reply &= " type='method_return'"
+  cmd_reply &= "\""
+  cmd_reply &= " | "
+  cmd_reply &= "grep --line-buffered -B1 ' uint32 '"
+  'cmd_reply &= " grep -B1 uint32"
+  Debug cmd_reply
+  pDbusMonitorReply = Shell cmd_reply For Read As "pDbusMonitorReply"
+  aNotifications = New SMy_Notification[]
+End
+
+Public ids As New Collection
+
+Public Sub pDbusMonitorreply_read()
+  Dim sOutput As String
+  Dim sline As String
+  Dim lines As New String[]
+  Dim reply_serial, id As Integer
+  Read #Last, sOutput, -99999999
+  If Not monitoring Then Return
+  lines = Split(sOutput, "\n")
+  For Each sline In lines
+    Select sline
+      Case Like "method return time=* sender=* destination=* serial=* reply_serial=*" 
+        Try reply_serial = CInt(get_field(sline, "reply_serial"))
+        If Error Then Return
+      Case Like "* uint32 *"
+        Try id = CInt(svalue(sline))
+        If Error Then Return
+    End Select
+  Next
+  If id <> "" Then
+    If reply_serial <> "" Then
+      ids[reply_serial] = id
+    Endif
+  Endif
+  
+End
+
+
+
+Public Sub pDbusMonitor_read()
+  Dim sOutput As String
+  Read #Last, sOutput, -99999999
+  If Not monitoring Then Return
+  Parse_and_clone(Split(sOutput, "\n"))  
+End
+
+
+Public Sub Parse_and_clone(saNotification As String[])
+  Dim t As String 
+  Dim n As SMy_Notification
+  Dim i, j As Integer
+  Dim serial As Integer
+  Dim actions_array_index As Integer = 4
+  Dim saActions As New String[]
+
+  'find the beginning of the notification
+  Repeat
+    Try t = saNotification.Extract(0, 1)[0]
+    If Error Then 
+      Debug "Dropping messages"
+      Return
+    Endif
+    If t Like "*method call time=* sender=* *destination* serial=* path=* interface=*" Then
+      'get serial
+      serial = get_field(t, "serial")
+      Debug serial
+    Endif
+  Until Not (t Like "*method call time=* sender=* *destination* serial=* path=* interface=*")
+  
+  If Not (t Like " *string \"*\"*") Then 
+    Debug "Dropping messages"
+    Return
+  Endif
+  n = New SMy_Notification
+  
+  Try n.serial = serial
+  Try n.app_name = svalue(t)
+  Try n.replaces_id = svalue(saNotification[0])
+  Try n.app_icon = svalue(saNotification[1])
+  Try n.summary = svalue(saNotification[2])
+  Try n.body = svalue(saNotification[3])
+  
+
+  'parse actions array
+    If saNotification.max >= 4 Then
+      If saNotification[actions_array_index] Like "* array [" Then   
+        If actions_array_index >= saNotification.max Then
+          Debug "Oops, Something wrong: actions_array_index >= saNotification.max" 
+          Debug "Dropping notification"
+          Return
+        Endif
+        For j = actions_array_index + 1 To saNotification.max
+          'add actions to the array actions:
+          If Not (saNotification[j] Like "* ]") Then 'do not add the close array symbol as an action
+            saActions.Add(saNotification[j]) 
+            Debug "New action: " & saNotification[j]
+          Endif
+          
+          If saNotification[j] Like "* ]" Then 
+            If saActions.count > 0 Then 
+              Debug "Not going to clone notifications with actions"
+              Return
+            Endif
+            Break
+          Endif
+        Next
+      Endif
+    Endif
+    
+    
+    
+  'Try n.actions = saNotification[4]
+  If Error Then 
+    Debug "Dropping messages"
+    Return   
+  Endif
+  
+  
+  'n.hints = saNotification[
+  'search For expire timeout value, it has To be "int32"
+  For i = 4 To saNotification.Max
+    If saNotification[i] Like "* int32 *" Then
+      n.expire_timeout = svalue(saNotification[i])
+      If n.expire_timeout = 0 Then 
+        Debug "Not going to clone persistent notifications"
+        Return
+      Endif
+    Endif
+  Next
+  
+  
+  n.dDate = Now
+  Debug "New Notification"
+  Repeat
+    Wait 0.1 'keep this wait up in the cycle
+    Try n.cloned_id = ids[serial]
+  Until Not Error
+
+  notify(n, 0.2)
+  
+End
+
+Public Function svalue(s As String) As String
+  ' anykeyword "anyvalue" -> anyvalue
+  ' anykeyword anyvalue -> anyvalue
+  Dim start As Integer
+  s = Trim(s)
+  start = InStr(s, " ")
+  s = Right(s, - start)
+  If Left(s) = "\"" Then s = Right(s, -1)
+  If Right(s) = "\"" Then s = Left(s, -1)
+  Return s
+End
+
+Public Function get_field(t As String, f As String) As Variant
+  Dim value_start, value_end, value As Integer
+  t &= " " 'parsing function need empty space at the end
+  value_start = InStr(t, " " & f & "=") + Len(f) + 2
+  value_end = InStr(t, " ", value_start)
+  Try value = CInt(Mid(t, value_start, value_end - value_start))
+  Return value
+End
+
+
+Public monitoring As Boolean = True
+
+Public Sub Notify_all()
+  Dim n As SMy_Notification
+  monitoring = False 'do not get your own messages
+  For Each n In aNotifications
+    notify(n, 0)
+  Next
+  Wait 0.1
+  monitoring = True
+  aNotifications.clear
+End
+
+
+Public Sub notify(n As SMy_Notification, wait_delay As Float)
+  Dim cmd As String = ""
+  Dim body As String
+  If wait_delay <> 0 Then monitoring = False
+  cmd = notify_send_exe
+  cmd &= " --urgency=critical "
+  cmd &= " --expire-time=0 "
+  cmd &= " --app-name=" & sq(n.app_name)
+  cmd &= " --icon=" & sq(n.app_icon)
+  cmd &= " --replace=" & sq(n.cloned_id)
+  cmd &= " " & sq(n.summary)
+  body = n.body 
+  'body &= "<br><br> At: " & n.dDate
+  cmd &= " " & sq(body)
+  Debug cmd
+  Shell cmd  
+  If wait_delay <> 0 Then 
+    Wait wait_delay
+    monitoring = True
+  Endif
+End
+
+Public Sub sq(s As String) As String
+  Return "'" & s & "'"
+End
+
+
+Public Sub quitnow()
+  pDbusMonitor.Kill()  
+  pDbusMonitorreply.Kill()
+End
+

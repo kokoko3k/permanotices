@@ -1,0 +1,8 @@
+# Gambas Project File 3.0
+# Compiled with Gambas 3.9.1
+Title=gbPermanotices
+Startup=Main
+Version=0.0.1
+TabSize=2
+Language=en_US
+Packager=1
