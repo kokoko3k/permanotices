@@ -11,7 +11,7 @@ to never expire.
 Note that:
 ======
 * Persistent notifications are left unchanged
-* notifications that carries actions are left unchanged
+* notifications that carry actions are left unchanged
 * notifications HINTS are silently discarded
 
 
