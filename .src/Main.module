@@ -56,17 +56,17 @@ End
 
 Public TmpDir As String 
 Public notify_send_exe As String
-
+Public dBusMonitorExe As String = ""
+  
 Public Sub Main()
-  Dim dBusMonitorExe As String = ""
-  Dim cmd, cmd_reply As String
+
 
   Try dBusMonitorExe = Which("dbus-monitor")
   If dBusMonitorExe = "" Then 
     Debug "dbus-monitor cannot be found in $PATH"
     Quit
   Endif
-  
+  dBusMonitorExe = "timeout -s 3600 2 " & dBusMonitorExe
   TmpDir = File.Dir(Temp())
   notify_send_exe = tmpdir & "/notify-send.sh"
   Try Copy "notify-send.sh" To notify_send_exe
@@ -76,7 +76,14 @@ Public Sub Main()
     Quit
   Endif
   
-  
+  start_dBusMonitor(dBusMonitorExe)
+  start_dBusMonitor_reply(dBusMonitorExe)
+
+  aNotifications = New SMy_Notification[]
+End
+
+Public Sub start_dBusMonitor(MonitorExe As String)
+  Dim cmd As String
   cmd = dBusMonitorExe
   cmd &= " --monitor"
   cmd &= " \""
@@ -88,7 +95,10 @@ Public Sub Main()
   'cmd &= "|grep --line-buffered '.*'"
   Debug cmd
   pDbusMonitor = Shell cmd For Read Write As "pDbusMonitor"
-  
+End
+
+Public Sub start_dBusMonitor_reply(dBusMonitorExe As String)
+  Dim cmd_reply As String
   cmd_reply = dBusMonitorExe
   cmd_reply &= " --monitor"
   cmd_reply &= " \""
@@ -99,8 +109,17 @@ Public Sub Main()
   'cmd_reply &= " grep -B1 uint32"
   Debug cmd_reply
   pDbusMonitorReply = Shell cmd_reply For Read As "pDbusMonitorReply"
-  aNotifications = New SMy_Notification[]
 End
+
+Public Sub pDbusMonitorreply_kill()
+  start_dBusMonitor_reply(dBusMonitorExe)
+End
+
+Public Sub pDbusMonitor_kill()
+  start_dBusMonitor(dBusMonitorExe)
+End
+
+ 
 
 Public ids As New Collection
 
@@ -161,10 +180,6 @@ Public Sub pDbusMonitor_read()
       Else
     last_notify &= sOutput
   Endif
-  
-
-  
-  
 End
 
 Public Sub is_complete_notification(lines As String) As Boolean
@@ -417,7 +432,5 @@ Public Sub quitnow()
   pDbusMonitor.Kill()  
   pDbusMonitorreply.Kill()
 End
-
-
 
 
