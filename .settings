@@ -4,16 +4,22 @@ Count=0
 [DebugWindow]
 Count=0
 
+[DebugWindow/Split(last_notify, "\n")]
+Geometry=[1426,128,779,508]
+
+[DebugWindow/Split(lines, "\n")]
+Geometry=[52,0,1038,755]
+
 [DebugWindow/saNotification]
-Geometry=[52,190,773,802]
+Geometry=[1580,56,773,802]
 
 [Executable]
 Path="permanotices.gambas"
 
 [OpenFile]
-Active=1
-File[1]=".src/Main.module:0.133"
-File[2]="notify-send.sh:0.99"
+Active=2
+File[1]="notify-send.sh:0.99"
+File[2]=".src/Main.module:27.69"
 Count=2
 
 [Watches]

@@ -66,7 +66,7 @@ Public Sub Main()
     Debug "dbus-monitor cannot be found in $PATH"
     Quit
   Endif
-  dBusMonitorExe = "timeout -s 3600 2 " & dBusMonitorExe
+  dBusMonitorExe = "timeout -s 9 3600 " & dBusMonitorExe
   TmpDir = File.Dir(Temp())
   notify_send_exe = tmpdir & "/notify-send.sh"
   Try Copy "notify-send.sh" To notify_send_exe

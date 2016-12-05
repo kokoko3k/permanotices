@@ -2,7 +2,7 @@
 # Compiled with Gambas 3.9.1
 Title=gbPermanotices
 Startup=Main
-Version=0.0.2
+Version=0.0.4
 Component=gb.signal
 TabSize=2
 Language=en_US
