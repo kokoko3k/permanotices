@@ -5,11 +5,14 @@ Count=0
 Count=0
 
 [DebugWindow/saNotification]
-Geometry=[52,0,224,280]
+Geometry=[52,190,773,802]
+
+[Executable]
+Path="permanotices.gambas"
 
 [OpenFile]
 Active=1
-File[1]=".src/Main.module:15.173"
+File[1]=".src/Main.module:0.133"
 File[2]="notify-send.sh:0.99"
 Count=2
 
