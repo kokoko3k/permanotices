@@ -2,8 +2,11 @@
 # Compiled with Gambas 3.9.1
 Title=gbPermanotices
 Startup=Main
-Version=0.0.4
+Version=0.0.6
+Component=gb.args
 Component=gb.signal
+Arguments=[["--help"],["-v"],["-r"],["-d"],["-r","-v","-d"],["-r","-v","-d","-l","/tmp/ciao"]]
+CurrentArgument=4
 TabSize=2
 Language=en_US
 Packager=1

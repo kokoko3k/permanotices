@@ -25,6 +25,14 @@ Public pDbusMonitor As Process 'get notification bodyes
 Public pDbusMonitorReply As Process 'get replies / notification ids
 Public aNotifications As SMy_Notification[]
 
+Public Sub myDebug(Optional a As String = "", Optional b As String = "", Optional c As String = "", Optional d As String = "", Optional e As String = "", Optional f As String = "", Optional g As String = "", Optional h As String = "", Optional i As String = "", Optional j As String = "")
+  Dim Caller As String = "Unknown caller"
+  If Not arg_verbose Then Return
+  Try caller = System.Backtrace[1]
+  Print caller & ": " & a, b, c, d, e, f, g, h, i, j
+  'Print 
+End
+
 
 Public Sub ProcessSignals(Doit As Boolean)
   Dim sig As Integer
@@ -41,7 +49,7 @@ Public Sub ProcessSignals(Doit As Boolean)
 End
 
 Public Sub Application_Signal(Sig As Integer)
-  Debug "Got Signal " & sig & " Quitting as clean as possible"
+  MyDebug("Got Signal " & sig & " Quitting as clean as possible")
   ProcessSignals(False)
   QuitNow()
   Quit
@@ -57,13 +65,18 @@ End
 Public TmpDir As String 
 Public notify_send_exe As String
 Public dBusMonitorExe As String = ""
+
+Public arg_logfile As String = ""
+Public arg_notify_duplicate As Boolean = False
+Public arg_notify_replace As Boolean = True
+Public arg_verbose As Boolean = False
+
   
 Public Sub Main()
 
-
   Try dBusMonitorExe = Which("dbus-monitor")
   If dBusMonitorExe = "" Then 
-    Debug "dbus-monitor cannot be found in $PATH"
+    MyDebug("dbus-monitor cannot be found in $PATH")
     Quit
   Endif
   dBusMonitorExe = "timeout -s 9 3600 " & dBusMonitorExe
@@ -72,9 +85,16 @@ Public Sub Main()
   Try Copy "notify-send.sh" To notify_send_exe
   Try Chmod notify_send_exe To "rwxr-x---"
   If Error Then 
-    Debug "Could not set File permissions"
+    MyDebug("Could not set File permissions")
     Quit
   Endif
+
+  Args.begin(Application.name & ":")
+  arg_logfile = Args.get("l", "logfile", ("Produces a log file with notification informations (Default False)"))
+    If (Args.Has("d", "duplicate", ("Duplicate notifications (Default False)"))) Then arg_notify_duplicate = True
+    If (Args.Has("r", "replace", ("Replace notifications (Default True)"))) Then arg_notify_replace = True 
+    If (Args.Has("v", "verbose", ("enable Debug output (Default False)"))) Then arg_verbose = True
+  Args.End()
   
   start_dBusMonitor(dBusMonitorExe)
   start_dBusMonitor_reply(dBusMonitorExe)
@@ -84,7 +104,7 @@ End
 
 Public Sub start_dBusMonitor(MonitorExe As String)
   Dim cmd As String
-  cmd = dBusMonitorExe
+  cmd = MonitorExe
   cmd &= " --monitor"
   cmd &= " \""
   cmd &= " type='method_call',"
@@ -93,13 +113,13 @@ Public Sub start_dBusMonitor(MonitorExe As String)
   cmd &= " member='Notify'"
   cmd &= "\""
   'cmd &= "|grep --line-buffered '.*'"
-  Debug cmd
+  MyDebug(cmd)
   pDbusMonitor = Shell cmd For Read Write As "pDbusMonitor"
 End
 
-Public Sub start_dBusMonitor_reply(dBusMonitorExe As String)
+Public Sub start_dBusMonitor_reply(MonitorExe As String)
   Dim cmd_reply As String
-  cmd_reply = dBusMonitorExe
+  cmd_reply = MonitorExe
   cmd_reply &= " --monitor"
   cmd_reply &= " \""
   cmd_reply &= " type='method_return'"
@@ -107,7 +127,7 @@ Public Sub start_dBusMonitor_reply(dBusMonitorExe As String)
   cmd_reply &= " | "
   cmd_reply &= "grep --line-buffered -B1 ' uint32 '"
   'cmd_reply &= " grep -B1 uint32"
-  Debug cmd_reply
+  MyDebug(cmd_reply)
   pDbusMonitorReply = Shell cmd_reply For Read As "pDbusMonitorReply"
 End
 
@@ -144,7 +164,7 @@ Public Sub pDbusMonitorreply_read()
   If id <> "" Then
     If reply_serial <> "" Then
       ids[reply_serial] = id
-      Debug "Notification ID: " & id & " has reply_serial: " & reply_serial
+      MyDebug("Notification ID: " & id & " has reply_serial: " & reply_serial)
     Endif
   Endif
   
@@ -158,17 +178,17 @@ Public Sub pDbusMonitor_read()
   'Read #Last, sOutput, - Lof(Last)
   While Lof(Last) > 0
     Read #Last, tmp, - Lof(Last)
-    Debug "data coming"
+    MyDebug("data coming")
     sOutput &= tmp
   Wend
 
   'Debug sOutput
-  Debug "Length=" & Len(sOutput)
+  MyDebug("Length=" & Len(sOutput))
   If Not monitoring Then Return
 
   If last_notify <> "" Then 'means last output was not complete
     last_notify &= sOutput
-    Debug "appending..."
+    MyDebug("appending...")
       Else
     last_notify = sOutput
   Endif
@@ -176,23 +196,54 @@ Public Sub pDbusMonitor_read()
     to_parse = last_notify
     last_notify = ""
     Try Parse_and_clone(Split(to_parse, "\n"))  
-    If Error Then Debug "Error parsing notification"
+    If Error Then MyDebug("Error parsing notification")
       Else
     last_notify &= sOutput
   Endif
 End
 
 Public Sub is_complete_notification(lines As String) As Boolean
-  Debug Split(lines, "\n")
-  Debug "testing Match_Start_Notification"
+  MyDebug("testing Match_Start_Notification")
   If Left(lines, 4096) Like "*" & Match_Start_Notification & "*" Then
-    Debug "testing Match_END_Notification"
+    MyDebug("testing Match_END_Notification")
     If Right(lines, 4096) Like "*" & Match_End_Notification Then 
-      Debug "END testing Match_END_Notification"
+      MyDebug("END testing Match_END_Notification")
       Return True
     Endif
   Endif
   Return False
+End
+
+
+Public Sub Log_to_file(n As SMy_Notification)
+Dim logfile_file As File
+Dim sData As String
+  If Exist(arg_logfile) Then
+    logfile_file = Open arg_logfile For Write Append
+      Else
+     logfile_file = Open arg_logfile For Write Create
+    Endif
+
+  sData = "New Notification:"
+  sData &= "\n"
+  sData &= Now()
+  sData &= "\n"
+  sData &= "Application name: " & n.app_name
+  sData &= "\n"
+  sData &= "Summary: " & n.summary
+  sData &= "\n"
+  sData &= "Body: " & n.body
+  sData &= "\n"
+  sData &= "App icon: " & n.app_icon
+  sData &= "\n"
+  sData &= "End Notification"
+  sData &= "\n"
+  sData &= "\n"  
+  
+  Write #logfile_file, sData
+
+logfile_file.Close
+  
 End
 
 
@@ -202,22 +253,22 @@ Public Sub Parse_and_clone(saNotification As String[])
   Dim n As SMy_Notification
   Dim saActions As String[]
   
-  Debug "Searching for notification start line"
+  MyDebug("Searching for notification start line")
   Repeat
     Try t = saNotification.Extract(0, 1)[0]
     If Error Then 
-      Debug "Dropping messages"
+      MyDebug("Dropping messages")
       Return
     Endif
   Until t Like "*" & Match_Start_Notification & "*"
   
-  Debug "Find the serial"
+  MyDebug("Find the serial")
   If t Like "*method call time=* sender=* *destination* serial=* path=* interface=*" Then
     'get serial
     serial = get_field(t, "serial")
-    Debug "Serial: " & serial
+    MyDebug("Serial: " & serial)
       Else
-    Debug "Could not get Serial!"
+    MyDebug("Could not get Serial!")
     Return
   Endif
   n = New SMy_Notification
@@ -229,56 +280,56 @@ Public Sub Parse_and_clone(saNotification As String[])
   '   Return
   ' Endif
 
-  Debug "Find App name"
+  MyDebug("Find App name")
     Try n.app_name = extract_string(saNotification)
       If Error Then Goto GenericError
-        Debug "Check if next field is uint32"
+        MyDebug("Check if next field is uint32")
         If Not (saNotification[0] Like " uint32 *") Then
-          Debug "Missing required field, dropping notification"
+          MyDebug("Missing required field, dropping notification")
           Return
         Endif
         
-  Debug "Find replaces_id"
+  MyDebug("Find replaces_id")
     Try n.replaces_id = svalue(saNotification.Extract(0, 1)[0])
     If Error Then Goto GenericError
     If n.replaces_id <> "0" Then
-      Debug "Not going to replace a notification which replaces another"
+      MyDebug("Not going to replace a notification which replaces another")
       Return
     Endif
-      Debug "Check if next field is string"  
+      MyDebug("Check if next field is string")
       If Not (saNotification[0] Like " string \"*") Then
-        Debug "Missing required field, dropping notification"
+        MyDebug("Missing required field, dropping notification")
         Return
       Endif  
 
-  Debug "Find app icon"
+  MyDebug("Find app icon")
       Try n.app_icon = extract_string(saNotification)    
       If Error Then Goto GenericError
-      Debug "Check if next field is string"  
+      MyDebug("Check if next field is string")
       If Not (saNotification[0] Like " string \"*") Then
-        Debug "Missing required field, dropping notification"
+        MyDebug("Missing required field, dropping notification")
         Return
       Endif
   
-  Debug "Find Summary"  
+  MyDebug("Find Summary")
       Try n.summary = extract_string(saNotification)
       If Error Then Goto GenericError
-      Debug "Check if next field is string"  
+      MyDebug("Check if next field is string")
       If Not (saNotification[0] Like " string \"*") Then
-        Debug "Missing required field, dropping notification"
+        MyDebug("Missing required field, dropping notification")
         Return
       Endif
   
-  Debug "Find Body"
+  MyDebug("Find Body")
       Try n.body = extract_string(saNotification)
       If Error Then Goto GenericError
-      Debug "Check if next field is an array"  
+      MyDebug("Check if next field is an array")
       If Not (saNotification[0] Like " array [") Then
-        Debug "Missing required field, dropping notification"
+        MyDebug("Missing required field, dropping notification")
         Return
       Endif      
   
-  Debug "Find Actions array"
+  MyDebug("Find Actions array")
  'parse actions array
       saNotification.Extract(0, 1)
       saActions = New String[]
@@ -286,12 +337,12 @@ Public Sub Parse_and_clone(saNotification As String[])
         'add actions to the array actions:
         If Not (saNotification[j] Like "* ]") Then 'do not add the close array symbol as an action
           saActions.Add(saNotification[j]) 
-          Debug "New action: " & saNotification[j]
+          MyDebug("New action: " & saNotification[j])
         Endif
         
         If saNotification[j] Like " ]" Then 
           If saActions.count > 0 Then 
-            Debug "Not going to clone notifications with actions"
+            MyDebug("Not going to clone notifications with actions")
             Return
           Endif
           Break
@@ -300,19 +351,19 @@ Public Sub Parse_and_clone(saNotification As String[])
 
 
       saNotification.Extract(0, j + 1)
-      Debug saActions.count
-      Debug "Check if next field is an array"  
+      MyDebug(saActions.count)
+      MyDebug("Check if next field is an array")
         If Not (saNotification[0] Like " array [") Then
-          Debug "Missing required field, dropping notification"
+          MyDebug("Missing required field, dropping notification")
           Return
         Endif          
 
-  Debug "Hints array is skipped, find expire_timeout field"
+  MyDebug("Hints array is skipped, find expire_timeout field")
       For j = saNotification.Max DownTo 0
         If saNotification[j] Like " int32 *" Then
           n.expire_timeout = svalue(saNotification[j])
           If n.expire_timeout = 0 Then 
-              Debug "Not going to clone persistent notifications"
+              MyDebug("Not going to clone persistent notifications")
               Return
             Endif
           Break
@@ -320,17 +371,29 @@ Public Sub Parse_and_clone(saNotification As String[])
       Next
   
   n.dDate = Now
-  Debug "New Notification"
+  MyDebug("New Notification")
   Repeat
     Wait 0.1 'keep this wait up in the cycle
     Try n.cloned_id = ids[serial]
   Until Not Error
 
-  notify(n, 0.2)
+  If arg_notify_replace Then 
+    notify(n, 0.2)
+  Endif
+  
+  If arg_notify_duplicate Then
+    n.cloned_id = 0
+    notify(n, 0.2)
+  Endif
+  If arg_logfile <> "" Then
+    Log_to_file(n)
+  Endif
+  
+  
   Return
   
   GenericError:
-  Debug "Generic Error, dropping Notification"
+  MyDebug("Generic Error, dropping Notification")
   Return
   
 End
@@ -339,7 +402,6 @@ Public Function extract_string(slines As String[]) As String
   'Given an array of strings, find the value of the first occurrence
   'of: string "value"
   'the value may be spanned over multiple lines.
-  Dim sLine As String
   Dim subData As String
   Dim i As Integer
   Dim iStart, iEnd As Integer
@@ -415,7 +477,7 @@ Public Sub notify(n As SMy_Notification, wait_delay As Float)
   body = Replace(n.body, "\n", "<br>")
   'body &= "<br><br> At: " & n.dDate
   cmd &= " " & sq(body)
-  Debug cmd
+  MyDebug(cmd)
   Shell cmd  
   If wait_delay <> 0 Then 
     Wait wait_delay
